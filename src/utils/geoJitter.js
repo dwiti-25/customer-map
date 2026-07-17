@@ -13,7 +13,7 @@ function pseudoRandom(seed) {
   return x - Math.floor(x);
 }
 
-export function jitterCoordinates([lat, lng], seed, magnitude = 0.25) {
+export function jitterCoordinates([lat, lng], seed, magnitude = 0.02) {
   const base = hashSeed(seed);
   const offsetLat = (pseudoRandom(base) - 0.5) * magnitude;
   const offsetLng = (pseudoRandom(base + 1) - 0.5) * magnitude;
