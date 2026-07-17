@@ -5,11 +5,14 @@ export function exportLeadsToExcel(leads, filename = "mowito-leads-export.xlsx")
     "Company Name": lead.company || "",
     "Contact Person": lead.person || "",
     "Designation": lead.designation || "",
+    "Industry": lead.industryName || "",
+    "Location Type": lead.locationType === "CORPORATE_HQ" ? "Corporate HQ" : lead.locationType === "PLANT" ? "Plant" : "",
     "City": lead.city || "",
+    "Address": lead.addressLine || "",
+    "Google Maps URL": lead.googleMapsUrl || "",
     "Email": lead.email || "",
     "Phone": lead.phone || "",
     "Application Requested": lead.application || "",
-    "Source": lead.source || "",
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(rows);

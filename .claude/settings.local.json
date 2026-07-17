@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm root *)",
-      "Bash(find / -maxdepth 6 -iname \"playwright\" -type d)"
+      "Bash(find / -maxdepth 6 -iname \"playwright\" -type d)",
+      "Bash(node -e ' *)",
+      "WebFetch(domain:www.shree-electricals.com)"
     ]
   }
 }

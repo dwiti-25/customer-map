@@ -30,3 +30,17 @@ export const CITY_COORDINATES = {
   Aurangabad: [19.8762, 75.3433],
   Rajkot: [22.3039, 70.8022],
 };
+
+// Some cities appear under two spellings with identical coordinates above.
+// Without this, customers stored under different spellings of the same city
+// get treated as two different cities for grouping/counting purposes (e.g.
+// route planning would never combine them into one intra-city route).
+const CITY_ALIASES = {
+  Bengaluru: "Bangalore",
+  Gurugram: "Gurgaon",
+  Tiruchirappalli: "Trichy",
+};
+
+export function canonicalCity(city) {
+  return CITY_ALIASES[city] || city;
+}

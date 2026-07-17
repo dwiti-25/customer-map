@@ -15,13 +15,17 @@ function stopIcon(number, color) {
 
 // Pans/zooms the map to reveal the planned stops whenever a new route plan
 // is generated, since selected customers can be far from the map's current view.
+// Includes the real road geometry (when present) in the bounds too, since a
+// winding real route can extend outside the straight-line box drawn by just
+// the stops themselves.
 function FitRouteBounds({ routePlan }) {
   const map = useMap();
 
   useEffect(() => {
-    const positions = routePlan.cities.flatMap((cityRoute) =>
-      cityRoute.stops.map((stop) => stop.coordinates)
-    );
+    const positions = routePlan.cities.flatMap((cityRoute) => [
+      ...cityRoute.stops.map((stop) => stop.coordinates),
+      ...(cityRoute.geometry || []),
+    ]);
 
     if (positions.length === 0) return;
 
@@ -45,7 +49,7 @@ export function RouteLayer({ routePlan }) {
 
       {routePlan.cities.map((cityRoute, cityIndex) => {
         const color = ROUTE_COLORS[cityIndex % ROUTE_COLORS.length];
-        const positions = cityRoute.stops.map((stop) => stop.coordinates);
+        const positions = cityRoute.geometry || cityRoute.stops.map((stop) => stop.coordinates);
         const previousCity = routePlan.cities[cityIndex - 1];
 
         return (
@@ -69,9 +73,12 @@ export function RouteLayer({ routePlan }) {
               positions={positions}
               pathOptions={{
                 color,
-                weight: 4,
+                weight: cityRoute.usedRoadRouting ? 4 : 4,
                 opacity: 0.85,
-                dashArray: "8 6",
+                // Solid for a real road route, dashed when it's the
+                // straight-line estimate - a visual cue for which cities got
+                // real routing vs the fallback.
+                dashArray: cityRoute.usedRoadRouting ? null : "8 6",
               }}
             />
 

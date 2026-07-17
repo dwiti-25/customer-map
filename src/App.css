@@ -33,6 +33,7 @@
 
 /* Header */
 .app-header {
+  position: relative;
   text-align: center;
   margin-bottom: 40px;
 }
@@ -43,6 +44,68 @@
   margin: 0;
   color: var(--primary);
   letter-spacing: -0.5px;
+}
+
+.user-badge {
+  position: absolute;
+  right: 0;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.user-badge button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.user-badge button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Login Page */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  padding: 24px;
+}
+
+.login-card {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  padding: 32px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.login-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+.login-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0 0 20px;
 }
 
 /* Dashboard Cards Section */
@@ -268,6 +331,64 @@
   gap: 14px;
 }
 
+.form-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.form-section-label:first-child {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
+.location-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.location-picker-coords {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.location-picker-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.locate-on-map-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: -4px;
+}
+
+.locate-on-map-button {
+  padding: 8px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.locate-message {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .form-field {
   display: flex;
   flex-direction: column;
@@ -419,10 +540,16 @@
 }
 
 /* Route Planning */
+.route-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .plan-route-button {
+  flex: 1;
   width: 100%;
   padding: 12px;
-  margin-top: 16px;
   background: var(--accent);
   color: white;
   border: none;
@@ -434,8 +561,33 @@
   transition: background 0.2s ease;
 }
 
-.plan-route-button:hover {
+.plan-route-button:hover:not(:disabled) {
   background: var(--accent-hover);
+}
+
+.plan-route-button:disabled,
+.clear-route-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clear-route-button {
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.clear-route-button:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .route-panel {
@@ -535,6 +687,16 @@
   font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+.route-mode-real {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.route-mode-estimated {
+  color: var(--text-tertiary);
+  font-style: italic;
 }
 
 .route-stop {

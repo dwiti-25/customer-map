@@ -1,5 +1,29 @@
 import * as XLSX from "xlsx";
 
+// Matches column headers loosely (case/whitespace/punctuation-insensitive) so
+// a curly vs straight apostrophe in "Person's Name" - or any other stray
+// whitespace/punctuation difference between source files - doesn't silently
+// produce a blank field. This function is no longer called by the running
+// app (data now comes from the backend API - see src/api/customers.js), but
+// is kept correct here in case the Excel import path is ever reused.
+function normalizeKey(key) {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getField(row, ...candidates) {
+  const normalizedRow = {};
+  for (const key of Object.keys(row)) {
+    normalizedRow[normalizeKey(key)] = row[key];
+  }
+  for (const candidate of candidates) {
+    const value = normalizedRow[normalizeKey(candidate)];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
 const files = [
   {
     path: "/IMTEX_Leads.xlsx",
@@ -30,42 +54,19 @@ async function loadExcel(file) {
 
     rows.forEach((row) => {
       data.push({
-        company:
-  row["Company Name"] ||
-  row["Company"] ||
-  row["Organization"] ||
-  row["Customer"] ||
-  row["Client"] ||
-  "",
+        company: getField(row, "Company Name", "Company", "Organization", "Customer", "Client") || "",
 
-       person:
-  row["Person's Name"] ||
-  row["Contact Name"] ||
-  row["Contact Person"] ||
-  row["Name"] ||
-  "",
+        person: getField(row, "Person's Name", "Contact Name", "Contact Person", "Name") || "",
 
-        designation:
-          row["Designation"] || "",
+        designation: getField(row, "Designation") || "",
 
-        city:
-  row["City"] ||
-  row["Location"] ||
-  row["Town"] ||
-  "",
+        city: getField(row, "City", "Location", "Town") || "",
 
-        email:
-          row["Email ID"] ||
-          row["Email"] ||
-          "",
+        email: getField(row, "Email ID", "Email") || "",
 
-        phone:
-          row["Phone Number"] ||
-          row["Phone"] ||
-          "",
+        phone: getField(row, "Phone Number", "Phone") || "",
 
-        application:
-          row["Application Requested"] || "",
+        application: getField(row, "Application Requested") || "",
 
         source: file.source,
       });

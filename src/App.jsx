@@ -10,126 +10,173 @@ import MarkerClusterGroup from "react-leaflet-markercluster";
 import "leaflet/dist/leaflet.css";
 import "react-leaflet-markercluster/styles";
 import "./App.css";
-import { loadLeads } from "./utils/loadLeads";
 import { jitterCoordinates } from "./utils/geoJitter";
-import { CITY_COORDINATES } from "./utils/cityCoordinates";
+import { CITY_COORDINATES, canonicalCity } from "./utils/cityCoordinates";
 import { buildRoutePlan } from "./routing/buildRoutePlan";
 import { RouteLayer } from "./routing/RouteLayer";
 import { formatDistance, formatDuration } from "./routing/geo";
-import {
-  getManualLeads,
-  addManualLead,
-  updateManualLead,
-  deleteManualLead,
-} from "./leads/manualLeadsStore";
 import { LeadFormModal } from "./leads/LeadFormModal";
 import { exportLeadsToExcel } from "./leads/exportLeads";
+import { isLoggedIn, fetchCurrentUser, logout } from "./api/auth";
+import { fetchAllCustomers, createCustomer, updateCustomer } from "./api/customers";
+import { createLocation, updateLocation, deleteLocation } from "./api/locations";
+import { fetchIndustries } from "./api/industries";
+import { fetchRoadRoute } from "./api/routes";
+import { expandCustomerToRows } from "./api/customerMapper";
+import { LoginForm } from "./auth/LoginForm";
 
-function getMarkerIcon(source) {
-  const colorMap = {
-    "IMTEX": "#3b82f6",
-    "ET Expo": "#10b981",
-    "Chennai Expo": "#ef4444",
-  };
-  
-  const color = colorMap[source] || "#3b82f6";
-  
-  return L.icon({
+const MARKER_COLOR_PALETTE = [
+  "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
+  "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#6366f1",
+];
+const UNASSIGNED_COLOR = "#94a3b8";
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+const markerIconCache = new Map();
+
+function getMarkerIcon(industryName) {
+  const key = industryName || "";
+  if (markerIconCache.has(key)) return markerIconCache.get(key);
+
+  const color = industryName
+    ? MARKER_COLOR_PALETTE[hashString(industryName) % MARKER_COLOR_PALETTE.length]
+    : UNASSIGNED_COLOR;
+
+  const icon = L.icon({
     iconUrl: `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='${encodeURIComponent(color)}'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z'/%3E%3C/svg%3E`,
     iconSize: [25, 41],
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
     shadowSize: [41, 41],
   });
+
+  markerIconCache.set(key, icon);
+  return icon;
 }
 
 function App() {
-  const [excelLeads, setExcelLeads] = useState([]);
-  const [manualLeads, setManualLeads] = useState(() => getManualLeads());
+  const [authChecked, setAuthChecked] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [rawCustomers, setRawCustomers] = useState([]);
+  const [industries, setIndustries] = useState([]);
   const [search, setSearch] = useState("");
   const [selectedCity, setSelectedCity] = useState("All");
-  const [selectedSource, setSelectedSource] = useState("All");
-  const [selectedCompanies, setSelectedCompanies] = useState(new Set());
+  const [selectedIndustry, setSelectedIndustry] = useState("All");
+  const [selectedIds, setSelectedIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem("visitList");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch (e) {
+      console.error("Failed to load visit list:", e);
+      return new Set();
+    }
+  });
   const [routePlan, setRoutePlan] = useState(null);
   const [showRoute, setShowRoute] = useState(false);
+  const [isPlanningRoute, setIsPlanningRoute] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
 
-  const getCompanyKey = (company, city, email) => 
-    `${company}|${city}|${email}`;
-
   useEffect(() => {
-    const saved = localStorage.getItem("visitList");
-    if (saved) {
-      try {
-        setSelectedCompanies(new Set(JSON.parse(saved)));
-      } catch (e) {
-        console.error("Failed to load visit list:", e);
+    async function checkAuth() {
+      if (!isLoggedIn()) {
+        setAuthChecked(true);
+        return;
       }
+      try {
+        const user = await fetchCurrentUser();
+        setCurrentUser(user);
+      } catch {
+        logout();
+      }
+      setAuthChecked(true);
     }
+    checkAuth();
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("visitList", JSON.stringify([...selectedCompanies]));
-  }, [selectedCompanies]);
+    if (!currentUser) return;
 
-  const toggleCompanySelection = (company, city, email) => {
-    const key = getCompanyKey(company, city, email);
-    const newSet = new Set(selectedCompanies);
-    if (newSet.has(key)) {
-      newSet.delete(key);
-    } else {
-      newSet.add(key);
+    async function fetchData() {
+      const [all, allIndustries] = await Promise.all([fetchAllCustomers(), fetchIndustries()]);
+      setRawCustomers(all);
+      setIndustries(allIndustries);
     }
-    setSelectedCompanies(newSet);
+    fetchData();
+  }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem("visitList", JSON.stringify([...selectedIds]));
+  }, [selectedIds]);
+
+  const toggleSelection = (id) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedIds(newSet);
   };
 
-  const planRoute = () => {
-    if (selectedCompanies.size === 0) {
+  const planRoute = async () => {
+    if (selectedIds.size === 0) {
       alert("Please select at least one company");
       return;
     }
 
-    const selected = customers.filter((customer) =>
-      selectedCompanies.has(
-        getCompanyKey(customer.company, customer.city, customer.email)
-      )
-    );
+    const selected = customers.filter((customer) => selectedIds.has(customer.id));
 
-    setRoutePlan(buildRoutePlan(selected));
-    setShowRoute(true);
+    setIsPlanningRoute(true);
+    try {
+      const plan = await buildRoutePlan(selected, { getRoadRoute: fetchRoadRoute });
+      setRoutePlan(plan);
+      setShowRoute(true);
+    } finally {
+      setIsPlanningRoute(false);
+    }
   };
 
-  useEffect(() => {
-    async function fetchData() {
-      const leads = await loadLeads();
-      setExcelLeads(leads);
-    }
+  const clearRoute = () => {
+    setSelectedIds(new Set());
+    setRoutePlan(null);
+    setShowRoute(false);
+  };
 
-    fetchData();
-  }, []);
+  // Every row here corresponds to one Location (a customer with 2 locations
+  // shows as 2 rows), matching how the same company appearing at two events
+  // already produced two separate rows before this migration. Customers with
+  // no location (no city to plot) are filtered out here, same as leads with
+  // an unrecognized city always were.
+  const customers = rawCustomers
+    .flatMap(expandCustomerToRows)
+    .map((row) => {
+      const hasRealCoordinates = row.realLatitude != null && row.realLongitude != null;
+      const base = hasRealCoordinates
+        ? [row.realLatitude, row.realLongitude]
+        : CITY_COORDINATES[row.city];
 
-  const allLeads = [...excelLeads, ...manualLeads];
+      const coordinates = hasRealCoordinates
+        ? base
+        : base
+        ? jitterCoordinates(base, `${row.company}|${row.city}|${row.email}`)
+        : undefined;
 
-  const customers = allLeads
-    .map((lead) => {
-      const city = (lead.city || "").trim();
-      const base = CITY_COORDINATES[city];
-
-      return {
-        ...lead,
-        city,
-        coordinates: base
-          ? jitterCoordinates(base, `${lead.company}|${city}|${lead.email}`)
-          : undefined,
-      };
+      return { ...row, coordinates };
     })
-    .filter((lead) => lead.coordinates);
+    .filter((row) => row.coordinates);
 
-  const cityOptions = useMemo(
-    () => Object.keys(CITY_COORDINATES).sort(),
-    []
-  );
+  // Unfiltered, one row per location (or one blank-city row for customers
+  // with none) - so exporting never silently loses a customer just because
+  // it isn't currently plottable on the map.
+  const allLeads = rawCustomers.flatMap(expandCustomerToRows);
 
   const handleAddLeadClick = () => {
     setEditingLead(null);
@@ -141,40 +188,79 @@ function App() {
     setIsLeadModalOpen(true);
   };
 
-  const handleDeleteLead = (lead) => {
+  const handleDeleteLead = async (lead) => {
     if (!window.confirm(`Delete lead "${lead.company}"? This cannot be undone.`)) {
       return;
     }
 
-    const key = getCompanyKey(lead.company, lead.city, lead.email);
-    setManualLeads(deleteManualLead(lead.id));
+    try {
+      await deleteLocation(lead.locationId);
+    } catch (err) {
+      alert(err.message || "Failed to delete lead");
+      return;
+    }
 
-    setSelectedCompanies((prev) => {
-      if (!prev.has(key)) return prev;
+    setRawCustomers((prev) =>
+      prev.map((c) =>
+        c.id !== lead.customerId
+          ? c
+          : { ...c, locations: c.locations.filter((loc) => loc.id !== lead.locationId) }
+      )
+    );
+
+    setSelectedIds((prev) => {
+      if (!prev.has(lead.id)) return prev;
       const next = new Set(prev);
-      next.delete(key);
+      next.delete(lead.id);
       return next;
     });
   };
 
-  const handleSaveLead = (fields) => {
-    if (editingLead) {
-      const oldKey = getCompanyKey(editingLead.company, editingLead.city, editingLead.email);
-      const newKey = getCompanyKey(fields.company, fields.city, fields.email);
+  const handleSaveLead = async (fields) => {
+    const customerFields = {
+      companyName: fields.company,
+      contactPerson: fields.person || undefined,
+      designation: fields.designation || undefined,
+      email: fields.email || undefined,
+      phone: fields.phone || undefined,
+      applicationNotes: fields.application || undefined,
+      industryId: fields.industryId || undefined,
+    };
 
-      setManualLeads(updateManualLead(editingLead.id, fields));
+    const locationFields = {
+      type: fields.locationType,
+      city: fields.city,
+      addressLine: fields.addressLine || undefined,
+      googleMapsUrl: fields.googleMapsUrl || undefined,
+      latitude: fields.latitude ?? undefined,
+      longitude: fields.longitude ?? undefined,
+    };
 
-      if (oldKey !== newKey) {
-        setSelectedCompanies((prev) => {
-          if (!prev.has(oldKey)) return prev;
-          const next = new Set(prev);
-          next.delete(oldKey);
-          next.add(newKey);
-          return next;
-        });
+    try {
+      if (editingLead) {
+        const customer = await updateCustomer(editingLead.customerId, customerFields);
+        const location = await updateLocation(editingLead.locationId, locationFields);
+
+        setRawCustomers((prev) =>
+          prev.map((c) =>
+            c.id !== customer.id
+              ? c
+              : {
+                  ...c,
+                  ...customer,
+                  locations: c.locations.map((loc) => (loc.id === location.id ? location : loc)),
+                }
+          )
+        );
+      } else {
+        const customer = await createCustomer(customerFields);
+        const location = await createLocation(customer.id, locationFields);
+
+        setRawCustomers((prev) => [...prev, { ...customer, locations: [location] }]);
       }
-    } else {
-      setManualLeads(addManualLead(fields));
+    } catch (err) {
+      alert(err.message || "Failed to save lead");
+      return;
     }
 
     setIsLeadModalOpen(false);
@@ -186,17 +272,22 @@ function App() {
     setEditingLead(null);
   };
 
+  const cityOptions = useMemo(
+    () => Object.keys(CITY_COORDINATES).sort(),
+    []
+  );
+
   const cities = useMemo(() => {
     return [
       "All",
-      ...new Set(customers.map((c) => c.city).sort()),
+      ...new Set(customers.map((c) => canonicalCity(c.city)).sort()),
     ];
   }, [customers]);
 
-  const sources = useMemo(() => {
+  const industryOptions = useMemo(() => {
     return [
       "All",
-      ...new Set(customers.map((c) => c.source)),
+      ...new Set(customers.map((c) => c.industryName || "Unassigned")),
     ];
   }, [customers]);
 
@@ -211,44 +302,54 @@ function App() {
 
     const matchesCity =
       selectedCity === "All" ||
-      customer.city === selectedCity;
+      canonicalCity(customer.city) === selectedCity;
 
-    const matchesSource =
-      selectedSource === "All" ||
-      customer.source === selectedSource;
+    const matchesIndustry =
+      selectedIndustry === "All" ||
+      (customer.industryName || "Unassigned") === selectedIndustry;
 
     return (
       matchesSearch &&
       matchesCity &&
-      matchesSource
+      matchesIndustry
     );
   });
 
   const stats = {
     total: customers.length,
-    cities: new Set(customers.map((c) => c.city)).size,
-    imtex: customers.filter(
-      (c) => c.source === "IMTEX"
-    ).length,
-    et: customers.filter(
-      (c) => c.source === "ET Expo"
-    ).length,
-    chennai: customers.filter(
-      (c) => c.source === "Chennai Expo"
-    ).length,
+    cities: new Set(customers.map((c) => canonicalCity(c.city))).size,
   };
-    return (
+
+  if (!authChecked) {
+    return null;
+  }
+
+  if (!currentUser) {
+    return <LoginForm onLoginSuccess={setCurrentUser} />;
+  }
+
+  return (
     <div className="app-container">
       <div className="app-header">
         <h1>🚗 Mowito Customer Travel Planner</h1>
+        <div className="user-badge">
+          <span>{currentUser.name}</span>
+          <button
+            type="button"
+            onClick={() => {
+              logout();
+              setCurrentUser(null);
+              setRawCustomers([]);
+            }}
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
       <div className="dashboard">
         <Card title="Total Leads" value={stats.total} />
         <Card title="Cities Covered" value={stats.cities} />
-        <Card title="IMTEX" value={stats.imtex} />
-        <Card title="ET Expo" value={stats.et} />
-        <Card title="Chennai Expo" value={stats.chennai} />
       </div>
 
       <div className="filters-container">
@@ -273,13 +374,13 @@ function App() {
 
         <select
           className="select-field"
-          value={selectedSource}
+          value={selectedIndustry}
           onChange={(e) =>
-            setSelectedSource(e.target.value)
+            setSelectedIndustry(e.target.value)
           }
         >
-          {sources.map((source) => (
-            <option key={source}>{source}</option>
+          {industryOptions.map((industry) => (
+            <option key={industry}>{industry}</option>
           ))}
         </select>
       </div>
@@ -295,36 +396,36 @@ function App() {
 
       <div className="content-layout">
         <div className="sidebar">
-          <h2>Customers ({filteredCustomers.length} | {selectedCompanies.size} selected)</h2>
+          <h2>Customers ({filteredCustomers.length} | {selectedIds.size} selected)</h2>
 
-          {filteredCustomers.map((customer, index) => {
-            const companyKey = getCompanyKey(customer.company, customer.city, customer.email);
-            const isSelected = selectedCompanies.has(companyKey);
+          {filteredCustomers.map((customer) => {
+            const isSelected = selectedIds.has(customer.id);
             return (
-              <div key={index} className="customer-item">
+              <div key={customer.id} className="customer-item">
                 <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
                   <input
                     type="checkbox"
                     checked={isSelected}
-                    onChange={() => toggleCompanySelection(customer.company, customer.city, customer.email)}
+                    onChange={() => toggleSelection(customer.id)}
+                    aria-label={`Select ${customer.company} for route planning`}
                     style={{ marginTop: "2px", cursor: "pointer" }}
                   />
                   <div style={{ flex: 1 }}>
                     <strong>{customer.company}</strong>
                     <div className="customer-item-person">{customer.person}</div>
                     <div className="customer-item-city">{customer.city}</div>
-                    <div className="customer-item-source">{customer.source}</div>
+                    <div className="customer-item-source">{customer.industryName || "Unassigned"}</div>
                   </div>
-                  {customer.isManual && (
-                    <div className="customer-item-actions">
-                      <button
-                        type="button"
-                        className="icon-button"
-                        title="Edit lead"
-                        onClick={() => handleEditLeadClick(customer)}
-                      >
-                        ✏️
-                      </button>
+                  <div className="customer-item-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title="Edit lead"
+                      onClick={() => handleEditLeadClick(customer)}
+                    >
+                      ✏️
+                    </button>
+                    {customer.isManual && (
                       <button
                         type="button"
                         className="icon-button"
@@ -333,18 +434,27 @@ function App() {
                       >
                         🗑️
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })}
 
-          {selectedCompanies.size > 0 && (
+          {(selectedIds.size > 0 || routePlan) && (
             <>
-              <button className="plan-route-button" onClick={planRoute}>
-                📍 Plan Route ({selectedCompanies.size})
-              </button>
+              <div className="route-actions-row">
+                {selectedIds.size > 0 && (
+                  <button className="plan-route-button" onClick={planRoute} disabled={isPlanningRoute}>
+                    {isPlanningRoute ? "Planning route..." : `📍 Plan Route (${selectedIds.size})`}
+                  </button>
+                )}
+                {(selectedIds.size > 0 || routePlan) && (
+                  <button className="clear-route-button" onClick={clearRoute} disabled={isPlanningRoute}>
+                    🔄 Clear Route
+                  </button>
+                )}
+              </div>
 
               {showRoute && routePlan && (
                 <div className="route-panel">
@@ -353,6 +463,7 @@ function App() {
                     <button
                       className="route-panel-close"
                       onClick={() => setShowRoute(false)}
+                      aria-label="Close route plan"
                     >
                       ×
                     </button>
@@ -385,6 +496,11 @@ function App() {
                           <span>{cityIndex + 1}. {cityRoute.city} ({cityRoute.stops.length})</span>
                           <span className="route-city-meta">
                             {formatDistance(cityRoute.distanceKm)} · {formatDuration(cityRoute.durationHours)}
+                            {cityRoute.stops.length > 1 && (
+                              <span className={cityRoute.usedRoadRouting ? "route-mode-real" : "route-mode-estimated"}>
+                                {cityRoute.usedRoadRouting ? " · via road" : " · estimated"}
+                              </span>
+                            )}
                           </span>
                         </div>
                         {cityRoute.stops.map((customer, idx) => (
@@ -420,11 +536,11 @@ function App() {
 
             <MarkerClusterGroup>
               {filteredCustomers.map(
-                (customer, index) => (
+                (customer) => (
                   <Marker
-                    key={index}
+                    key={customer.id}
                     position={customer.coordinates}
-                    icon={getMarkerIcon(customer.source)}
+                    icon={getMarkerIcon(customer.industryName)}
                   >
                   <Popup>
                     <div
@@ -449,16 +565,29 @@ function App() {
 
                       <br />
 
-                      {customer.city}
+                      {customer.city} {customer.locationType === "CORPORATE_HQ" ? "(Corporate HQ)" : "(Plant)"}
 
                       <br />
                       <br />
 
-                      <b>Source</b>
+                      {customer.addressLine && (
+                        <>
+                          <b>Address</b>
+
+                          <br />
+
+                          {customer.addressLine}
+
+                          <br />
+                          <br />
+                        </>
+                      )}
+
+                      <b>Industry</b>
 
                       <br />
 
-                      {customer.source}
+                      {customer.industryName || "Unassigned"}
 
                       <br />
                       <br />
@@ -486,6 +615,16 @@ function App() {
                       <br />
 
                       {customer.application || "-"}
+
+                      {customer.googleMapsUrl && (
+                        <>
+                          <br />
+                          <br />
+                          <a href={customer.googleMapsUrl} target="_blank" rel="noopener noreferrer">
+                            View on Google Maps
+                          </a>
+                        </>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -509,6 +648,7 @@ function App() {
       {isLeadModalOpen && (
         <LeadFormModal
           cityOptions={cityOptions}
+          industries={industries}
           initialValues={editingLead}
           onSave={handleSaveLead}
           onClose={handleCloseLeadModal}

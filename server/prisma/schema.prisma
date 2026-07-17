@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum LocationType {
+  PLANT
+  CORPORATE_HQ
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(EMPLOYEE)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customersCreated Customer[] @relation("CustomerCreatedBy")
+  customersUpdated Customer[] @relation("CustomerUpdatedBy")
+  locationsCreated Location[] @relation("LocationCreatedBy")
+  locationsUpdated Location[] @relation("LocationUpdatedBy")
+}
+
+model Industry {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  customers Customer[]
+}
+
+model Customer {
+  id               String    @id @default(cuid())
+  companyName      String
+  contactPerson    String?
+  designation      String?
+  email            String?
+  phone            String?
+  applicationNotes String?
+  industryId       String?
+  industry         Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  createdById      String?
+  createdBy        User?     @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById      String?
+  updatedBy        User?     @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  importTag        String?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  locations Location[]
+
+  @@index([industryId])
+}
+
+model Location {
+  id            String       @id @default(cuid())
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type          LocationType
+  addressLine   String?
+  city          String
+  latitude      Float?
+  longitude     Float?
+  googleMapsUrl String?
+  contactPerson String?
+  email         String?
+  phone         String?
+  createdById   String?
+  createdBy     User?        @relation("LocationCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById   String?
+  updatedBy     User?        @relation("LocationUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([customerId])
+}
