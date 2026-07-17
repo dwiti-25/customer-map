@@ -25,10 +25,6 @@ const COORD_PATTERNS = [
 
 const SHORT_LINK_HOSTS = ["goo.gl", "maps.app.goo.gl"];
 
-function log(...args) {
-  console.log("[DEBUG maps-url]", ...args);
-}
-
 function isShortLink(url) {
   try {
     const host = new URL(url).hostname;
@@ -43,12 +39,10 @@ function isShortLink(url) {
 // Returns the original url unchanged on any failure - never throws.
 async function resolveShortLink(url) {
   try {
-    log("resolving short link:", url);
     const response = await fetch(url, { method: "GET", redirect: "follow" });
-    log("short link resolved to:", response.url, "(status", response.status + ")");
     return response.url || url;
   } catch (err) {
-    log("short link resolution failed:", err.message);
+    console.error("Failed to resolve Maps short link:", err.message);
     return url;
   }
 }
@@ -60,12 +54,10 @@ function extractCoordinates(url) {
       const latitude = parseFloat(match[1]);
       const longitude = parseFloat(match[2]);
       if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-        log(`matched pattern "${name}" ->`, { latitude, longitude });
         return { latitude, longitude, matchedPattern: name };
       }
     }
   }
-  log("no coordinate pattern matched url:", url);
   return null;
 }
 
@@ -74,9 +66,6 @@ function extractCoordinates(url) {
 // link, no pattern match) just results in null so the caller can fall back
 // to geocoding the address instead.
 async function parseGoogleMapsUrl(originalUrl) {
-  log("=== start ===");
-  log("original url:", originalUrl);
-
   let workingUrl = originalUrl;
 
   if (isShortLink(originalUrl)) {
@@ -84,8 +73,6 @@ async function parseGoogleMapsUrl(originalUrl) {
   }
 
   const result = extractCoordinates(workingUrl);
-  log("=== end ===", result ? "SUCCESS" : "NO MATCH");
-
   if (!result) return null;
   return { ...result, resolvedUrl: workingUrl };
 }

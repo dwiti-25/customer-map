@@ -58,9 +58,7 @@ router.post("/routes/resolve-maps-url", requireAuth, async (req, res) => {
     return res.status(400).json({ error: { message: "Invalid Google Maps URL" } });
   }
 
-  console.log("[DEBUG maps-url] request received, url:", parsed.data.url);
   const result = await parseGoogleMapsUrl(parsed.data.url);
-  console.log("[DEBUG maps-url] responding with:", result);
 
   res.json({ result });
 });

@@ -100,14 +100,12 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
   // leaves the pin at the city-center default without saying so.
   const handleGoogleMapsUrlPaste = async (e) => {
     const pastedUrl = e.clipboardData.getData("text");
-    console.log("[DEBUG maps-url] onPaste fired, pasted value:", pastedUrl);
     if (!pastedUrl?.trim()) return;
 
     setIsLocating(true);
     setLocateMessage("");
 
     const urlResult = await resolveMapsUrl(pastedUrl.trim());
-    console.log("[DEBUG maps-url] frontend: urlResult after resolve:", urlResult);
 
     if (urlResult) {
       setForm((prev) => ({ ...prev, latitude: urlResult.latitude, longitude: urlResult.longitude }));
@@ -119,14 +117,8 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
       return;
     }
 
-    console.log(
-      "[DEBUG maps-url] frontend: URL parsing failed, falling back to address geocode. addressLine:",
-      form.addressLine
-    );
-
     if (form.addressLine?.trim()) {
       const addressResult = await geocodeAddress(form.addressLine, CITY_COORDINATES[form.city]);
-      console.log("[DEBUG maps-url] frontend: address-geocode fallback result:", addressResult);
 
       if (addressResult) {
         setForm((prev) => ({ ...prev, latitude: addressResult.latitude, longitude: addressResult.longitude }));
@@ -137,7 +129,6 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
       }
     }
 
-    console.log("[DEBUG maps-url] frontend: both URL parsing and address geocoding failed");
     setLocateMessage(
       "Couldn't determine a location from that Maps link or the address - please drag the pin manually below"
     );
