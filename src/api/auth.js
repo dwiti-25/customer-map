@@ -22,3 +22,10 @@ export async function fetchCurrentUser() {
 export function logout() {
   clearToken();
 }
+
+export async function changePassword(currentPassword, newPassword) {
+  await httpClient("/api/auth/change-password", {
+    method: "PATCH",
+    body: { currentPassword, newPassword },
+  });
+}

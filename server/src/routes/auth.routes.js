@@ -29,6 +29,11 @@ const registerSchema = z.object({
   role: z.enum(["ADMIN", "EMPLOYEE"]).optional(),
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
 function toPublicUser(user) {
   return {
     id: user.id,
@@ -85,6 +90,26 @@ router.post("/auth/register", requireAuth, requireRole("ADMIN"), async (req, res
   });
 
   res.status(201).json({ user: toPublicUser(user) });
+});
+
+router.patch("/auth/change-password", requireAuth, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: { message: "New password must be at least 8 characters" } });
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  const passwordMatches = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!passwordMatches) {
+    return res.status(400).json({ error: { message: "Current password is incorrect" } });
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+  res.json({ success: true });
 });
 
 module.exports = router;

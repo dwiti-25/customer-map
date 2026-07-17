@@ -24,6 +24,7 @@ import { fetchIndustries } from "./api/industries";
 import { fetchRoadRoute } from "./api/routes";
 import { expandCustomerToRows } from "./api/customerMapper";
 import { LoginForm } from "./auth/LoginForm";
+import { ChangePasswordModal } from "./auth/ChangePasswordModal";
 
 const MARKER_COLOR_PALETTE = [
   "#3b82f6", "#10b981", "#ef4444", "#f59e0b", "#8b5cf6",
@@ -83,6 +84,7 @@ function App() {
   const [isPlanningRoute, setIsPlanningRoute] = useState(false);
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   useEffect(() => {
     async function checkAuth() {
@@ -334,6 +336,9 @@ function App() {
         <h1>🚗 Mowito Customer Travel Planner</h1>
         <div className="user-badge">
           <span>{currentUser.name}</span>
+          <button type="button" onClick={() => setIsChangePasswordOpen(true)}>
+            Change Password
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -346,6 +351,10 @@ function App() {
           </button>
         </div>
       </div>
+
+      {isChangePasswordOpen && (
+        <ChangePasswordModal onClose={() => setIsChangePasswordOpen(false)} />
+      )}
 
       <div className="dashboard">
         <Card title="Total Leads" value={stats.total} />
