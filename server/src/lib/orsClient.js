@@ -85,7 +85,16 @@ async function geocodeAddress(text, focus) {
   }
 
   try {
-    const params = new URLSearchParams({ api_key: apiKey, text: text.trim(), size: "1" });
+    // boundary.country restricts Pelias/ORS's free-text matching to India -
+    // without it, a query like "Plot No. 1, Bidadi..." can fuzzy-match on
+    // the substring "Plot No." alone and return a result in Pakistan/France/
+    // wherever, since the geocoder has no country context to disambiguate.
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      text: text.trim(),
+      size: "1",
+      "boundary.country": "IND",
+    });
     if (focus?.lat != null && focus?.lng != null) {
       params.set("focus.point.lat", String(focus.lat));
       params.set("focus.point.lon", String(focus.lng));
@@ -107,7 +116,16 @@ async function geocodeAddress(text, focus) {
       return null;
     }
 
+    // Belt-and-suspenders check even with boundary.country set: reject
+    // anything outside a rough India bounding box rather than silently
+    // trusting a bad match.
     const [lng, lat] = coordinates;
+    const withinIndia = lat >= 6 && lat <= 38 && lng >= 68 && lng <= 98;
+    if (!withinIndia) {
+      console.error(`ORS geocode returned out-of-India result for "${text}":`, feature.properties?.label);
+      return null;
+    }
+
     return { latitude: lat, longitude: lng, label: feature.properties?.label || text };
   } catch (err) {
     console.error("ORS geocode error:", err.message);
