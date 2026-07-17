@@ -35,3 +35,21 @@ export async function geocodeAddress(address, focusCoordinates) {
     return null;
   }
 }
+
+// Returns null (never throws) if no coordinates could be extracted from the
+// URL (unrecognized format, dead short link, etc.) - callers should fall
+// back to geocoding the address field.
+export async function resolveMapsUrl(url) {
+  console.log("[DEBUG maps-url] frontend: sending url to backend:", url);
+  try {
+    const { result } = await httpClient("/api/routes/resolve-maps-url", {
+      method: "POST",
+      body: { url },
+    });
+    console.log("[DEBUG maps-url] frontend: received result:", result);
+    return result;
+  } catch (err) {
+    console.error("[DEBUG maps-url] frontend: resolve-maps-url request failed:", err.message);
+    return null;
+  }
+}

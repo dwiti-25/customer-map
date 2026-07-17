@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 
 function RecenterOnCityChange({ center }) {
@@ -12,10 +12,31 @@ function RecenterOnCityChange({ center }) {
   return null;
 }
 
+// Recenters when the pin is moved programmatically (URL parse, address
+// geocode) so the result is immediately visible without the user having to
+// pan/zoom themselves. Skips the very first render (that's handled by the
+// MapContainer's own initial `center` prop) and skips recentering on a
+// manual drag/click, since snapping the view back to a pin the user just
+// placed themselves would fight their own action.
+function RecenterOnExternalMove({ position, source }) {
+  const map = useMap();
+  const lastSource = useRef(source);
+
+  useEffect(() => {
+    if (source !== lastSource.current && source === "external") {
+      map.setView(position, 15);
+    }
+    lastSource.current = source;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position[0], position[1], source]);
+
+  return null;
+}
+
 function ClickToPlacePin({ onPlace }) {
   useMapEvents({
     click(e) {
-      onPlace([e.latlng.lat, e.latlng.lng]);
+      onPlace([e.latlng.lat, e.latlng.lng], "manual");
     },
   });
   return null;
@@ -24,7 +45,12 @@ function ClickToPlacePin({ onPlace }) {
 // Lets a user drop/drag a precise pin instead of relying on the city-center
 // fallback used everywhere else in the app. Defaults to the city's known
 // center coordinate until the user clicks or drags to refine it.
-export function LocationPicker({ center, position, onChange }) {
+//
+// `positionSource` distinguishes how `position` last changed - "external"
+// (Google Maps URL parsed, address geocoded) recenters the map on the new
+// pin automatically; "manual" (drag/click) does not, so the view doesn't
+// fight the user's own action.
+export function LocationPicker({ center, position, positionSource = "manual", onChange }) {
   const markerPosition = position || center;
 
   return (
@@ -36,6 +62,7 @@ export function LocationPicker({ center, position, onChange }) {
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <RecenterOnCityChange center={center} />
+        <RecenterOnExternalMove position={markerPosition} source={positionSource} />
         <ClickToPlacePin onPlace={onChange} />
         <Marker
           position={markerPosition}
@@ -43,7 +70,7 @@ export function LocationPicker({ center, position, onChange }) {
           eventHandlers={{
             dragend: (e) => {
               const { lat, lng } = e.target.getLatLng();
-              onChange([lat, lng]);
+              onChange([lat, lng], "manual");
             },
           }}
         />

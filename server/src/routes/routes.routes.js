@@ -2,6 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { requireAuth } = require("../middleware/requireAuth");
 const { getRoadRoute, geocodeAddress } = require("../lib/orsClient");
+const { parseGoogleMapsUrl } = require("../lib/googleMapsUrl");
 
 const router = express.Router();
 
@@ -40,6 +41,26 @@ router.post("/routes/geocode", requireAuth, async (req, res) => {
   const { address, focusLat, focusLng } = parsed.data;
   const focus = focusLat != null && focusLng != null ? { lat: focusLat, lng: focusLng } : undefined;
   const result = await geocodeAddress(address, focus);
+
+  res.json({ result });
+});
+
+const mapsUrlSchema = z.object({
+  url: z.string().min(1),
+});
+
+// Returns { result: null } (200, not an error) when no coordinates could be
+// extracted from the URL (unrecognized format, dead short link, etc.) - the
+// frontend falls back to geocoding the address field.
+router.post("/routes/resolve-maps-url", requireAuth, async (req, res) => {
+  const parsed = mapsUrlSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: { message: "Invalid Google Maps URL" } });
+  }
+
+  console.log("[DEBUG maps-url] request received, url:", parsed.data.url);
+  const result = await parseGoogleMapsUrl(parsed.data.url);
+  console.log("[DEBUG maps-url] responding with:", result);
 
   res.json({ result });
 });

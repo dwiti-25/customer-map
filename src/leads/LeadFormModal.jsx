@@ -2,7 +2,7 @@ import { cloneElement, useState } from "react";
 import { validateLead } from "./validateLead";
 import { LocationPicker } from "./LocationPicker";
 import { CITY_COORDINATES } from "../utils/cityCoordinates";
-import { geocodeAddress } from "../api/routes";
+import { geocodeAddress, resolveMapsUrl } from "../api/routes";
 
 const EMPTY_FORM = {
   company: "",
@@ -46,6 +46,11 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
   const [errors, setErrors] = useState({});
   const [isLocating, setIsLocating] = useState(false);
   const [locateMessage, setLocateMessage] = useState("");
+  // Tracks whether the current lat/lng came from a manual drag/click
+  // (source="manual") or was set programmatically by URL-parsing/geocoding
+  // (source="external") - LocationPicker uses this to decide whether to
+  // recenter the map on the new pin.
+  const [positionSource, setPositionSource] = useState("manual");
   const isEditing = Boolean(initialValues);
 
   const handleChange = (field) => (e) => {
@@ -57,10 +62,12 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
     // A new city means the old pin (if any) no longer applies - reset to
     // that city's default center rather than leaving a stale-looking pin.
     setForm((prev) => ({ ...prev, city, latitude: null, longitude: null }));
+    setPositionSource("manual");
   };
 
-  const handlePositionChange = ([lat, lng]) => {
+  const handlePositionChange = ([lat, lng], source = "manual") => {
     setForm((prev) => ({ ...prev, latitude: lat, longitude: lng }));
+    setPositionSource(source);
   };
 
   const handleLocateOnMap = async () => {
@@ -76,11 +83,64 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
 
     if (result) {
       setForm((prev) => ({ ...prev, latitude: result.latitude, longitude: result.longitude }));
+      setPositionSource("external");
       setLocateMessage(`Found: ${result.label}`);
     } else {
       setLocateMessage("Couldn't find that address automatically - drag the pin manually below");
     }
 
+    setIsLocating(false);
+  };
+
+  // Fires when a Google Maps URL is pasted into the field. Tries to extract
+  // exact coordinates directly from the URL first (handles place links,
+  // @lat,lng links, ?q= links, and maps.app.goo.gl short links - resolved
+  // server-side). Falls back to geocoding the Address field if the URL
+  // can't be parsed, and only shows an error if both fail - never silently
+  // leaves the pin at the city-center default without saying so.
+  const handleGoogleMapsUrlPaste = async (e) => {
+    const pastedUrl = e.clipboardData.getData("text");
+    console.log("[DEBUG maps-url] onPaste fired, pasted value:", pastedUrl);
+    if (!pastedUrl?.trim()) return;
+
+    setIsLocating(true);
+    setLocateMessage("");
+
+    const urlResult = await resolveMapsUrl(pastedUrl.trim());
+    console.log("[DEBUG maps-url] frontend: urlResult after resolve:", urlResult);
+
+    if (urlResult) {
+      setForm((prev) => ({ ...prev, latitude: urlResult.latitude, longitude: urlResult.longitude }));
+      setPositionSource("external");
+      setLocateMessage(
+        `Found from Maps link: ${urlResult.latitude.toFixed(5)}, ${urlResult.longitude.toFixed(5)}`
+      );
+      setIsLocating(false);
+      return;
+    }
+
+    console.log(
+      "[DEBUG maps-url] frontend: URL parsing failed, falling back to address geocode. addressLine:",
+      form.addressLine
+    );
+
+    if (form.addressLine?.trim()) {
+      const addressResult = await geocodeAddress(form.addressLine, CITY_COORDINATES[form.city]);
+      console.log("[DEBUG maps-url] frontend: address-geocode fallback result:", addressResult);
+
+      if (addressResult) {
+        setForm((prev) => ({ ...prev, latitude: addressResult.latitude, longitude: addressResult.longitude }));
+        setPositionSource("external");
+        setLocateMessage(`Couldn't read coordinates from that link, but found the address: ${addressResult.label}`);
+        setIsLocating(false);
+        return;
+      }
+    }
+
+    console.log("[DEBUG maps-url] frontend: both URL parsing and address geocoding failed");
+    setLocateMessage(
+      "Couldn't determine a location from that Maps link or the address - please drag the pin manually below"
+    );
     setIsLocating(false);
   };
 
@@ -219,14 +279,20 @@ export function LeadFormModal({ cityOptions, industries, initialValues, onSave, 
               type="url"
               value={form.googleMapsUrl}
               onChange={handleChange("googleMapsUrl")}
-              placeholder="https://maps.google.com/?q=..."
+              onPaste={handleGoogleMapsUrlPaste}
+              placeholder="https://maps.google.com/?q=... or a maps.app.goo.gl link"
             />
           </Field>
 
           {cityCenter && (
             <div className="form-field">
               <label>Exact Location</label>
-              <LocationPicker center={cityCenter} position={position} onChange={handlePositionChange} />
+              <LocationPicker
+                center={cityCenter}
+                position={position}
+                positionSource={positionSource}
+                onChange={handlePositionChange}
+              />
             </div>
           )}
 
