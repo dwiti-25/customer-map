@@ -1,8 +1,6 @@
 # 🚗 Mowito Customer Travel Planner
 
-A web-based customer visualization and travel planning application developed for **Mowito Robotics**.
-
-The application consolidates customer data from multiple Excel sheets, visualizes customer locations on an interactive map, and helps sales teams efficiently plan customer visits.
+A customer visualization and travel-planning application built for **Mowito Robotics**. It maps every customer/lead, plans optimized multi-stop visit routes with real road routing, and is backed by a proper multi-user database instead of static spreadsheets.
 
 ---
 
@@ -10,7 +8,7 @@ The application consolidates customer data from multiple Excel sheets, visualize
 
 https://customer-map-theta.vercel.app
 
----
+Log in with an account created via the backend (see [Authentication](#-authentication) below).
 
 ## 📂 GitHub Repository
 
@@ -23,234 +21,134 @@ https://github.com/dwiti-25/customer-map
 ### 📊 Dashboard
 - Total Leads
 - Cities Covered
-- Leads by Source
-  - IMTEX
-  - ET Expo
-  - Chennai Expo
-
----
 
 ### 🗺 Interactive Customer Map
-
-- Interactive Leaflet map
-- Marker clustering
-- Customer popups
-- City-based visualization
-- Automatic grouping of nearby customers
-
----
+- Interactive Leaflet map with marker clustering
+- Customer popups showing company, contact, industry, and location type (Corporate HQ / Plant)
+- Real, geocoded coordinates where researched; a deterministic city-center fallback (with a small randomized offset to de-overlap markers) where not
 
 ### 🔍 Search & Filters
-
-Search customers by:
-- Company Name
-- Contact Person
-
-Filter by:
-- City
-- Lead Source
-
----
+Search by company name or contact person. Filter by city and by industry (OEM, System Integrator, Machine Builder, Packaging, Automotive, Electronics, Food, Pharma, Logistics, Other).
 
 ### 📋 Customer List
-
-Displays:
-
-- Company Name
-- Contact Person
-- City
-- Lead Source
-
-Supports selecting multiple customers for travel planning.
-
----
+Company, contact person, city, industry — supports multi-select for route planning.
 
 ### 📍 Route Planning
+Select multiple customers to generate an optimized visit order with:
+- **Real road routing** within a city (via OpenRouteService), not a straight-line guess
+- Total distance and estimated travel time
+- The route drawn on the map as an actual road-following path
 
-Select multiple customers and automatically:
+### ➕ Add / Edit Lead
+Add or edit a customer directly from the app: company, contact, designation, industry, email, phone, application notes, city, location type, address, and exact map position — set via:
+- **Locate on Map** — geocodes the typed address
+- **Pasting a Google Maps link** — extracts exact coordinates directly from the URL (place links, `@lat,lng` links, `?q=` links, and `maps.app.goo.gl` short links), moves the pin, and recenters the map automatically
+- Manually dragging the pin
 
-- Generate an optimized visit order
-- Display total travel distance
-- Display estimated travel time
-- Visualize route directly on the map
-
----
-
-### ➕ Add New Lead
-
-New customer information can be added directly from the application.
-
-Fields include:
-
-- Company Name
-- Contact Person
-- Designation
-- City
-- Email
-- Phone
-- Application
-- Source
-
----
+If neither the link nor the address can be resolved, the app says so explicitly rather than silently guessing a location.
 
 ### 📤 Export
+Export the full customer list as CSV.
 
-Export the complete customer database as an Excel file.
+### 🔐 Authentication
+- Login required for the whole app (no public data).
+- Any user can change their own password from the header (**Change Password**) — no database access needed.
+- New accounts are created by an admin via the API (`POST /api/auth/register`); there's no public sign-up.
 
 ---
 
-# Data Sources
+# Architecture
 
-The application currently imports customer data from:
+Two independently deployed services:
 
-- IMTEX Leads.xlsx
-- ET Expo.xlsx
-- Chennai Automation Expo.xlsx
+```
+customer-map/
+├── src/                  # Frontend - React + Vite + Leaflet
+│   ├── api/              # All network calls to the backend go through here
+│   ├── auth/             # Login form, change-password modal
+│   ├── leads/            # Add/edit lead modal, map location picker
+│   ├── routing/          # Route-building + optimization logic
+│   └── utils/            # City coordinates, marker jitter, legacy Excel loader (unused)
+│
+├── server/               # Backend - Express + Prisma + PostgreSQL
+│   ├── prisma/           # Schema + migrations
+│   ├── scripts/          # One-off scripts (admin bootstrap, legacy data import, enrichment import)
+│   └── src/
+│       ├── routes/       # auth, customers, locations, industries, routes (directions/geocode)
+│       ├── middleware/   # requireAuth, requireRole
+│       └── lib/          # Prisma client, JWT, OpenRouteService client, Google Maps URL parser
+│
+└── public/               # Legacy Excel files - kept for reference only, no longer read by the app
+```
 
-During loading:
+### Data model (PostgreSQL via Prisma)
+- **User** — email, hashed password, role (`ADMIN` / `EMPLOYEE`), `isActive` (re-checked on every request for instant revocation)
+- **Industry** — fixed lookup table, seeded once
+- **Customer** — company + contact info, optional industry, soft-deletable, tagged if it came from the legacy Excel import
+- **Location** — one or more per customer (`PLANT` / `CORPORATE_HQ`), address, coordinates, Google Maps URL
 
-- Duplicate entries are removed
-- Different Excel column formats are standardized
-- Customer locations are mapped using predefined city coordinates
+### Real road routing & geocoding
+[OpenRouteService](https://openrouteservice.org/) powers both:
+- `POST /api/routes/directions` — real driving route between waypoints in the same city (falls back to a straight-line estimate if unavailable)
+- `POST /api/routes/geocode` — turns a typed address into coordinates
+- `POST /api/routes/resolve-maps-url` — extracts coordinates directly from a pasted Google Maps URL, resolving `maps.app.goo.gl` short links server-side first
 
 ---
 
 # Tech Stack
 
-- React
-- Vite
-- Leaflet
-- React Leaflet
-- XLSX
-- JavaScript
-- CSS
-
-Deployment:
-- Vercel
-
-Version Control:
-- Git
-- GitHub
-
----
-
-# Folder Structure
-
-```
-customer-map
-│
-├── public
-│   ├── IMTEX_Leads.xlsx
-│   ├── ET Expo.xlsx
-│   ├── Chennai Automation Expo.xlsx
-│
-├── src
-│   ├── components
-│   ├── utils
-│   │    └── loadLeads.js
-│   ├── App.jsx
-│   ├── main.jsx
-│   └── index.css
-│
-├── package.json
-└── README.md
-```
+**Frontend:** React, Vite, Leaflet / React-Leaflet, PapaParse (CSV export)
+**Backend:** Node.js, Express, Prisma, PostgreSQL, JWT (jsonwebtoken + bcryptjs), Zod (validation)
+**External API:** OpenRouteService (routing + geocoding)
+**Deployment:** Vercel (frontend), Railway (backend + PostgreSQL)
 
 ---
 
 # Running Locally
 
-Clone the repository
-
+### Frontend
 ```bash
 git clone https://github.com/dwiti-25/customer-map.git
-```
-
-Go into the project
-
-```bash
 cd customer-map
-```
-
-Install dependencies
-
-```bash
 npm install
-```
-
-Start development server
-
-```bash
+cp .env.example .env   # set VITE_API_URL to your local backend
 npm run dev
 ```
+Runs at `http://localhost:5173`.
 
-The application will be available at
-
+### Backend
+```bash
+cd server
+npm install
+cp .env.example .env   # set DATABASE_URL, JWT_SECRET, ORS_API_KEY
+npx prisma migrate deploy
+node prisma/seed.js                          # seeds the fixed industry list
+ADMIN_EMAIL=you@mowito.in ADMIN_PASSWORD=... ADMIN_NAME="Your Name" node scripts/createAdmin.js
+npm run dev
 ```
-http://localhost:5173
-```
-
----
-
-# Updating Lead Data
-
-Replace the Excel files inside the **public/** folder.
-
-If the column names differ from the expected format, update the mappings inside:
-
-```
-src/utils/loadLeads.js
-```
-
-No other code changes should be required.
+Runs at `http://localhost:4000`. Requires a PostgreSQL database and an [OpenRouteService API key](https://openrouteservice.org/dev/#/signup) (free tier is enough).
 
 ---
 
 # Deployment
 
-The application is deployed using **Vercel**.
-
-Every push to the **main** branch automatically triggers a new deployment.
+- **Frontend** — Vercel, auto-builds from `main` (`vercel --prod` or the GitHub integration).
+- **Backend** — Railway, deployed via `railway up` from `server/`; runs `prisma generate` on install and needs `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `ORS_API_KEY`, `PORT` set as environment variables.
+- **Database** — Railway-hosted PostgreSQL. Run `npx prisma migrate deploy` against it after any schema change.
 
 ---
 
 # Future Improvements
 
-- Authentication/Login
-- CRM integration
-- Live Google Maps routing
-- Route optimization using traffic
-- Customer visit history
-- Notes & follow-up tracking
-- Backend database integration
-- Multi-user support
+- Self-service "Add User" admin panel (today, creating a new named account requires an admin to call the API directly)
+- Per-user audit trail on customer/location edits
+- Code-splitting the frontend bundle (currently a single ~700KB chunk)
+- Notes & follow-up tracking per customer visit
 
 ---
 
 # Developed By
 
 **Dwiti Suchak**
-
-BITS Pilani
-
-Electrical & Electronics Engineering + M.Sc. Economics
-
+BITS Pilani — Electrical & Electronics Engineering + M.Sc. Economics
 Developed during internship at **Mowito Robotics**.
-
-
-# React + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
